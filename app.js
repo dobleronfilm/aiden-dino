@@ -22,7 +22,7 @@ const DEFAULTS = {
   family: [],
   favorites: ["dinosaurs", "Jurassic Park", "Lego", "pirates", "ghosts", "skeletons"],
   avoid: ["the dark"],
-  voice: "am_puck",
+  voice: "am_michael",
   surpriseRoars: true,
   webLookups: true,
   model: "claude-haiku-5-5",
