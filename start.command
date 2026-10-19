@@ -17,6 +17,13 @@ if ! claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
   claude auth login
 fi
 
+# Grab the newest version of the dino from GitHub, so updates arrive by themselves.
+REPO="https://raw.githubusercontent.com/dobleronfilm/aiden-dino/main"
+for f in index.html style.css app.js tts-worker.js server.py; do
+  if curl -fsSL --max-time 20 "$REPO/$f" -o "$f.new" 2>/dev/null; then mv "$f.new" "$f"; else rm -f "$f.new"; fi
+done
+[ -f dino.png ] || curl -fsSL --max-time 60 "$REPO/dino.png" -o dino.png 2>/dev/null
+
 if ! python3 -c 'import sys' >/dev/null 2>&1; then
   echo
   echo "Your Mac needs its free developer tools first."

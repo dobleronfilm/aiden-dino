@@ -291,7 +291,7 @@ let audio = null;
 let currentSource = null;
 let speakToken = 0;
 
-const tts = { worker: null, ready: false, failed: false, nextId: 1, pending: new Map() };
+const tts = { worker: null, ready: false, failed: false, pct: 0, nextId: 1, pending: new Map() };
 
 function startVoice() {
   try {
@@ -305,7 +305,7 @@ function startVoice() {
   pill.textContent = "Voice loading";
   tts.worker.onmessage = (e) => {
     const m = e.data;
-    if (m.type === "progress") pill.textContent = `Voice ${m.pct}%`;
+    if (m.type === "progress") { tts.pct = m.pct; pill.textContent = `Voice ${m.pct}%`; }
     if (m.type === "ready") { tts.ready = true; pill.hidden = true; }
     if (m.type === "failed") { tts.failed = true; pill.textContent = "Device voice"; problem(`The dino voice couldn't load: ${m.message}`); }
     if (m.type === "audio") {
@@ -333,9 +333,14 @@ function playSamples(samples, rate) {
     const src = audio.createBufferSource();
     src.buffer = buffer;
     src.connect(audio.destination);
-    src.onended = () => { if (currentSource === src) currentSource = null; resolve(); };
+    let done = false;
+    const finish = () => { if (done) return; done = true; if (currentSource === src) currentSource = null; resolve(); };
+    src.onended = finish;
     currentSource = src;
+    if (audio.state !== "running") audio.resume().catch(() => {});
     src.start();
+    // If the browser never reports the end (a paused sound system), don't leave the dino stuck.
+    setTimeout(finish, (samples.length / rate) * 1000 + 1500);
   });
 }
 
@@ -356,6 +361,8 @@ function bestDeviceVoice() {
   return voices.sort((a, b) => score(b) - score(a))[0] || null;
 }
 
+const spoken = new Set();
+
 function browserVoice(text, name) {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window)) return resolve();
@@ -363,8 +370,15 @@ function browserVoice(text, name) {
     const v = (name && deviceVoices().find((x) => x.name === name)) || bestDeviceVoice();
     if (v) u.voice = v;
     u.rate = 1;
-    u.onend = u.onerror = resolve;
+    let done = false;
+    const finish = () => { if (done) return; done = true; spoken.delete(u); resolve(); };
+    u.onend = finish;
+    u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") problem(`The device voice couldn't speak (${e.error}).`); finish(); };
+    spoken.add(u); // Chrome drops speech whose utterance gets garbage-collected mid-sentence.
+    speechSynthesis.cancel();
+    speechSynthesis.resume();
     speechSynthesis.speak(u);
+    setTimeout(finish, 2000 + text.length * 120);
   });
 }
 
@@ -774,10 +788,27 @@ $("settingsForm").addEventListener("submit", (e) => {
 
 $("tryVoice").onclick = async () => {
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); await audio.resume(); } catch {}
+  const choice = $("voice").value;
+  const label = $("voice").selectedOptions[0]?.textContent || "this voice";
+  const note = $("tryStatus");
+  if (!choice.startsWith("sys:") && !tts.ready) {
+    note.textContent = tts.failed
+      ? `The dino voices couldn't load here, so you'll hear this Mac's voice instead of ${label}.`
+      : `${label} is still downloading (${tts.pct}%). Until it finishes, you'll hear this Mac's voice.`;
+  } else {
+    note.textContent = `Playing ${label}...`;
+  }
   const old = settings.voice;
-  settings.voice = $("voice").value;
-  await speak("Ahoy, Captain! Dino Fact: mosasaurs were giant sea reptiles!");
-  settings.voice = old;
+  settings.voice = choice;
+  try {
+    await speak("Ahoy, Captain! Dino Fact: mosasaurs were giant sea reptiles!");
+    if (note.textContent.startsWith("Playing")) note.textContent = `Played ${label}. Didn't hear it? Check that the Mac's sound is up.`;
+  } catch (err) {
+    note.textContent = `Couldn't play ${label}: ${err.message || err}`;
+    problem(note.textContent);
+  } finally {
+    settings.voice = old;
+  }
 };
 $("eraseAll").onclick = () => {
   log = []; write("dinoLog", log);
