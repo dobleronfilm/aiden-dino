@@ -306,7 +306,7 @@ function startVoice() {
   tts.worker.onmessage = (e) => {
     const m = e.data;
     if (m.type === "progress") { tts.pct = m.pct; pill.textContent = `Voice ${m.pct}%`; }
-    if (m.type === "ready") { tts.ready = true; pill.hidden = true; }
+    if (m.type === "ready") { tts.ready = true; tts.device = m.device; pill.hidden = true; }
     if (m.type === "failed") { tts.failed = true; pill.textContent = "Device voice"; problem(`The dino voice couldn't load: ${m.message}`); }
     if (m.type === "audio") {
       const resolve = tts.pending.get(m.id);
@@ -391,16 +391,31 @@ function sayable(text) {
     .replace(/\bmosasaur\b/gi, "moza-sore");
 }
 
-async function speak(rawText) {
+// Starts making the dino voice for a reply right away, so it can be ready by the time it's needed.
+// Returns null when the device voice will speak instead.
+function prepare(rawText) {
+  if (settings.voice.startsWith("sys:") || !tts.ready || !audio) return null;
+  const text = sayable(rawText);
+  const sentences = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+  // A short first piece means the dino starts talking sooner.
+  if (sentences[0].length > 60) {
+    const cut = sentences[0].indexOf(",", 20);
+    if (cut > 0) sentences.splice(0, 1, sentences[0].slice(0, cut + 1), sentences[0].slice(cut + 1).trim());
+  }
+  const clips = sentences.map((s) => Promise.race([synth(s), new Promise((r) => setTimeout(() => r(null), 25000))]));
+  return { rawText, sentences, clips };
+}
+
+async function speak(rawText, prepared = null) {
   const text = sayable(rawText);
   const token = ++speakToken;
   dinoImg.classList.add("talking");
   try {
     const deviceChoice = settings.voice.startsWith("sys:") ? settings.voice.slice(4) : null;
-    if (!deviceChoice && tts.ready && audio) {
-      // Make every sentence at once; play each as soon as it's ready, in order.
-      const sentences = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [text];
-      const clips = sentences.map((s) => Promise.race([synth(s), new Promise((r) => setTimeout(() => r(null), 25000))]));
+    const ready = prepared && prepared.rawText === rawText ? prepared : (!deviceChoice && tts.ready && audio ? prepare(rawText) : null);
+    if (ready) {
+      // Every sentence is already being made; play each as soon as it's ready, in order.
+      const { sentences, clips } = ready;
       for (let i = 0; i < clips.length; i++) {
         const out = await clips[i];
         if (token !== speakToken) return;
@@ -646,19 +661,29 @@ async function handle(text) {
     reply = speakable(reply);
     if (taggedName && !spokenName) { memory.dinoName = taggedName; saveMemory(); setName(); flags.push("named"); }
 
+    let doRoar = false;
+    let prepared = null;
+    turns++;
     if (stop === "refusal" || !reply) { reply = SAFE_SWAP; alert = false; flags.push("swapped for safety"); }
     else if (alert) { reply = GROWNUP_LINE; flags.push("grown-up alert"); }
-    else if (!(await isSafe(text, reply))) { reply = SAFE_SWAP; flags.push("swapped for safety"); }
-
-    const safeTurn = !alert && !flags.includes("swapped for safety");
-    let doRoar = safeTurn && (wantsRoar || ROAR_RE.test(text));
-    turns++;
-    if (!doRoar && safeTurn && settings.surpriseRoars && turns > 2 && Math.random() < 0.12) {
-      doRoar = true;
-      reply = `${SURPRISE_LINES[Math.floor(Math.random() * SURPRISE_LINES.length)]} ${reply}`;
-      flags.push("surprise roar");
-    } else if (doRoar) {
-      flags.push("roar");
+    else {
+      doRoar = wantsRoar || ROAR_RE.test(text);
+      const surprise = !doRoar && settings.surpriseRoars && turns > 2 && Math.random() < 0.12
+        ? SURPRISE_LINES[Math.floor(Math.random() * SURPRISE_LINES.length)] : null;
+      const finalReply = surprise ? `${surprise} ${reply}` : reply;
+      // Start making the voice while the safety check runs, so the dino answers sooner.
+      prepared = prepare(finalReply);
+      if (await isSafe(text, reply)) {
+        reply = finalReply;
+        if (surprise) { doRoar = true; flags.push("surprise roar"); }
+        else if (doRoar) flags.push("roar");
+      } else {
+        hush();
+        prepared = null;
+        doRoar = false;
+        reply = SAFE_SWAP;
+        flags.push("swapped for safety");
+      }
     }
 
     thinking.remove();
@@ -669,7 +694,7 @@ async function handle(text) {
     bubble("dino-msg", reply);
     if (alert) startAlert();
     if (doRoar) await roar();
-    await speak(reply);
+    await speak(reply, prepared);
   } finally {
     busy = false;
     micBtn.disabled = false;
@@ -748,7 +773,8 @@ function openSettings() {
   deviceGroup.label = "Voices built into this device";
   deviceVoices().forEach((v) => deviceGroup.append(opt(`sys:${v.name}`, v.name)));
   $("voice").replaceChildren(dinoGroup, ...(deviceGroup.children.length ? [deviceGroup] : []));
-  $("voiceStatus").textContent = tts.ready ? "The dino voices are ready."
+  $("voiceStatus").textContent = tts.ready
+    ? `The dino voices are ready${tts.device === "webgpu" ? ", using this computer's graphics chip for speed" : ""}.`
     : tts.failed ? "The dino voices couldn't load on this device, so the dino uses a voice built into this device. Pick one below."
     : "The dino voices are still downloading. Until then, the dino uses a voice built into this device.";
   $("problems").textContent = problems.length ? problems.slice().reverse().join("\n") : "Nothing has gone wrong.";
