@@ -777,6 +777,7 @@ function openSettings() {
     ? `The dino voices are ready${tts.device === "webgpu" ? ", using this computer's graphics chip for speed" : ""}.`
     : tts.failed ? "The dino voices couldn't load on this device, so the dino uses a voice built into this device. Pick one below."
     : "The dino voices are still downloading. Until then, the dino uses a voice built into this device.";
+  $("version").textContent = `Dino version: ${local?.version || "web"}`;
   $("problems").textContent = problems.length ? problems.slice().reverse().join("\n") : "Nothing has gone wrong.";
   $("surpriseRoars").checked = settings.surpriseRoars;
   $("webLookups").checked = settings.webLookups;

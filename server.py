@@ -125,7 +125,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/status":
-            return self._json(200, claude_status())
+            version = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "unknown"
+            return self._json(200, {**claude_status(), "version": version})
         if self.path.endswith(".py") or "/." in self.path:
             return self._json(404, {"error": "not_found"})
         return super().do_GET()
