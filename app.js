@@ -382,7 +382,17 @@ function browserVoice(text, name) {
   });
 }
 
-async function speak(text) {
+// Voices mangle "mosasaurus", so they read a phonetic spelling. The chat bubble keeps the real word.
+function sayable(text) {
+  return text
+    .replace(/\bmosasauruses\b/gi, "moza-soruses")
+    .replace(/\bmosasaurus\b/gi, "moza-sorus")
+    .replace(/\bmosasaurs\b/gi, "moza-sores")
+    .replace(/\bmosasaur\b/gi, "moza-sore");
+}
+
+async function speak(rawText) {
+  const text = sayable(rawText);
   const token = ++speakToken;
   dinoImg.classList.add("talking");
   try {
