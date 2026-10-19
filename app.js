@@ -23,6 +23,7 @@ const DEFAULTS = {
   favorites: ["dinosaurs", "Jurassic Park", "Lego", "pirates", "ghosts", "skeletons"],
   avoid: ["the dark"],
   voice: "am_michael",
+  speed: 1.15,
   surpriseRoars: true,
   webLookups: true,
   model: "claude-haiku-5-5",
@@ -322,7 +323,7 @@ function synth(text) {
   return new Promise((resolve) => {
     const id = tts.nextId++;
     tts.pending.set(id, resolve);
-    tts.worker.postMessage({ type: "speak", id, text, voice: settings.voice });
+    tts.worker.postMessage({ type: "speak", id, text, voice: settings.voice, speed: settings.speed });
   });
 }
 
@@ -369,7 +370,7 @@ function browserVoice(text, name) {
     const u = new SpeechSynthesisUtterance(text);
     const v = (name && deviceVoices().find((x) => x.name === name)) || bestDeviceVoice();
     if (v) u.voice = v;
-    u.rate = 1;
+    u.rate = settings.speed;
     let done = false;
     const finish = () => { if (done) return; done = true; spoken.delete(u); resolve(); };
     u.onend = finish;
@@ -805,6 +806,7 @@ function openSettings() {
     : "The dino voices are still downloading. Until then, the dino uses a voice built into this device.";
   $("version").textContent = `Dino version: ${local?.version || "web"}`;
   $("problems").textContent = problems.length ? problems.slice().reverse().join("\n") : "Nothing has gone wrong.";
+  $("speed").value = String(settings.speed);
   $("surpriseRoars").checked = settings.surpriseRoars;
   $("webLookups").checked = settings.webLookups;
   $("dinoName").value = memory.dinoName || "";
@@ -835,6 +837,7 @@ $("settingsForm").addEventListener("submit", (e) => {
     favorites: lineList($("favorites").value),
     avoid: lineList($("avoid").value),
     voice: $("voice").value,
+    speed: Number($("speed").value) || 1.15,
     surpriseRoars: $("surpriseRoars").checked,
     webLookups: $("webLookups").checked,
     model: $("model").value.trim() || DEFAULTS.model,
@@ -862,7 +865,9 @@ $("tryVoice").onclick = async () => {
     note.textContent = `Playing ${label}...`;
   }
   const old = settings.voice;
+  const oldSpeed = settings.speed;
   settings.voice = choice;
+  settings.speed = Number($("speed").value) || 1.15;
   try {
     await speak("Ahoy, Captain! Dino Fact: mosasaurs were giant sea reptiles!");
     if (note.textContent.startsWith("Playing")) note.textContent = `Played ${label}. Didn't hear it? Check that the Mac's sound is up.`;
@@ -871,6 +876,7 @@ $("tryVoice").onclick = async () => {
     problem(note.textContent);
   } finally {
     settings.voice = old;
+    settings.speed = oldSpeed;
   }
 };
 $("eraseAll").onclick = () => {

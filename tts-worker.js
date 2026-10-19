@@ -42,9 +42,9 @@ async function drain() {
   if (working) return;
   working = true;
   while (queue.length) {
-    const { id, text, voice } = queue.shift();
+    const { id, text, voice, speed } = queue.shift();
     try {
-      const out = await tts.generate(text, { voice });
+      const out = await tts.generate(text, { voice, speed: speed || 1 });
       const samples = out.audio;
       self.postMessage({ type: "audio", id, samples, rate: out.sampling_rate }, [samples.buffer]);
     } catch (err) {
