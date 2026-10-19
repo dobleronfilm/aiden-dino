@@ -439,11 +439,14 @@ function hush() {
   tts.pending.clear();
   try { currentSource?.stop(); } catch {}
   currentSource = null;
+  try { currentRoar?.stop(); } catch {}
+  currentRoar = null;
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   dinoImg.classList.remove("talking");
 }
 
 let roarBuffer = null;
+let currentRoar = null;
 async function loadRoar() {
   try {
     const res = await fetch("roar.mp3");
@@ -464,7 +467,8 @@ function roar() {
       gain.gain.value = 1;
       src.buffer = roarBuffer;
       src.connect(gain).connect(audio.destination);
-      src.onended = done;
+      src.onended = () => { if (currentRoar === src) currentRoar = null; done(); };
+      currentRoar = src;
       src.start();
       return;
     }
@@ -598,8 +602,31 @@ function stopListening() { try { rec?.stop(); } catch {} }
 
 // ---------- one turn of the conversation ----------
 
+// Speaking is skippable: the Skip button, the microphone, or typing all cut the dino off.
+let sayId = 0;
+async function say(text, prepared = null, withRoar = false) {
+  const id = ++sayId;
+  busy = false;
+  micBtn.disabled = false;
+  $("skipBtn").hidden = false;
+  try {
+    if (withRoar) await roar();
+    if (id === sayId) await speak(text, prepared);
+  } finally {
+    if (id === sayId) $("skipBtn").hidden = true;
+  }
+}
+
+function skip() {
+  sayId++;
+  hush();
+  $("skipBtn").hidden = true;
+}
+
+let handleId = 0;
 async function handle(text) {
   if (!playing) return;
+  const id = ++handleId;
   busy = true;
   micBtn.disabled = true;
   setHint("Hmm...");
@@ -614,7 +641,7 @@ async function handle(text) {
       history.push({ role: "user", content: text }, { role: "assistant", content: GROWNUP_LINE });
       addLog(text, GROWNUP_LINE, ["grown-up alert"]);
       startAlert();
-      await speak(GROWNUP_LINE);
+      await say(GROWNUP_LINE);
       return;
     }
 
@@ -629,7 +656,7 @@ async function handle(text) {
         ? "My brain is asleep. A grown-up needs to check the dino window on the computer."
         : "I need my thinking key! A grown-up can add it under Grown-ups.";
       bubble("dino-msg", line);
-      await speak(line);
+      await say(line);
       return;
     }
 
@@ -645,7 +672,7 @@ async function handle(text) {
         : "Whoa, a big wave splashed my brain! Can you say that again?";
       problem(`Thinking failed: ${err.message || err}`);
       bubble("dino-msg", line);
-      await speak(line);
+      await say(line);
       return;
     }
     if (usedSearch) flags.push("looked it up");
@@ -693,12 +720,13 @@ async function handle(text) {
     addLog(text, reply, flags);
     bubble("dino-msg", reply);
     if (alert) startAlert();
-    if (doRoar) await roar();
-    await speak(reply, prepared);
+    await say(reply, prepared, doRoar);
   } finally {
-    busy = false;
-    micBtn.disabled = false;
-    if (playing) setHint("Tap the button and talk!");
+    if (id === handleId) {
+      busy = false;
+      micBtn.disabled = false;
+      if (playing && !rec) setHint("Tap the button and talk!");
+    }
   }
 }
 
@@ -745,10 +773,8 @@ async function start() {
       .catch((err) => problem(`Couldn't start Claude Code: ${err.message || err}`));
   }
   bubble("dino-msg", greeting);
-  micBtn.disabled = true;
-  await speak(greeting);
-  micBtn.disabled = false;
-  setHint("Tap the button and talk!");
+  await say(greeting);
+  if (!rec) setHint("Tap the button and talk!");
 }
 
 function lineList(text) { return text.split("\n").map((s) => s.trim()).filter(Boolean); }
@@ -856,6 +882,18 @@ $("eraseAll").onclick = () => {
 micBtn.addEventListener("click", () => {
   if (!playing || busy) return;
   if (rec) stopListening(); else startListening();
+});
+$("skipBtn").onclick = skip;
+$("typeForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("typeInput").value.trim();
+  if (!text || !playing || busy) return;
+  $("typeInput").value = "";
+  if (rec) { rec.onend = null; try { rec.abort(); } catch {} rec = null; micBtn.classList.remove("on"); dinoImg.classList.remove("listening"); }
+  chat.querySelectorAll(".msg.live").forEach((el) => el.remove());
+  skip();
+  bubble("kid-msg", text);
+  handle(text);
 });
 $("startBtn").onclick = start;
 $("againBtn").onclick = start;
