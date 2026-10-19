@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b8fd2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Dino Buddy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <span class="nametag" id="nametag">Mosasaurus</span>
+    <div class="top-buttons">
+      <span class="voice-pill" id="voicePill" hidden></span>
+      <button class="small" id="settingsBtn" type="button">Grown-ups</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <img class="dino" id="dino" src="dino.png" alt="A friendly mosasaurus">
+  </section>
+
+  <section class="chat" id="chat" aria-live="polite"></section>
+
+  <footer class="bottom">
+    <p class="hint" id="hint">Tap the button and talk!</p>
+    <button class="mic" id="micBtn" type="button" aria-label="Tap and talk">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+    </button>
+  </footer>
+</main>
+
+<div class="overlay" id="startScreen">
+  <div class="card">
+    <h1>Dino Buddy</h1>
+    <p id="startNote">Turn the sound up, then tap Start.</p>
+    <button class="big" id="startBtn" type="button">Start</button>
+  </div>
+</div>
+
+<div class="overlay alert" id="alertScreen" hidden>
+  <div class="card">
+    <h1>Let's find Daddy!</h1>
+    <p>A grown-up may be needed.</p>
+    <button class="big" id="okayBtn" type="button">We're okay, keep playing</button>
+  </div>
+</div>
+
+<div class="overlay" id="endScreen" hidden>
+  <div class="card">
+    <h1>Swim you later!</h1>
+    <button class="big" id="againBtn" type="button">Play again</button>
+  </div>
+</div>
+
+<div class="overlay" id="settings" hidden>
+  <form class="card panel" id="settingsForm">
+    <div class="row between">
+      <h2>Grown-ups</h2>
+      <button class="ghost" id="closeSettings" type="button">Done</button>
+    </div>
+    <div class="row">
+      <button class="ghost" id="bedtimeBtn" type="button">Bedtime</button>
+      <button class="ghost" id="dinnerBtn" type="button">Dinner time</button>
+    </div>
+
+    <p class="help" id="localNote" hidden>Running on this computer with your Claude plan. No key needed.</p>
+    <div id="keyBox">
+      <label for="apiKey">Claude API key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-...">
+      <p class="help">Get one at console.anthropic.com under API Keys. It's saved only on this device.</p>
+    </div>
+
+    <label for="childName">Kid's name</label>
+    <input id="childName" type="text" autocomplete="off">
+
+    <label for="family">Family (one per line, like "Daddy: his dad")</label>
+    <textarea id="family"></textarea>
+
+    <label for="favorites">Favorite things (one per line)</label>
+    <textarea id="favorites"></textarea>
+
+    <label for="avoid">Topics to avoid (one per line)</label>
+    <textarea id="avoid"></textarea>
+
+    <label for="voice">The dino's voice</label>
+    <div class="row">
+      <select id="voice"></select>
+      <button class="ghost" id="tryVoice" type="button">Try it</button>
+    </div>
+
+    <label class="check"><input type="checkbox" id="surpriseRoars"> Surprise roars every so often</label>
+    <label class="check"><input type="checkbox" id="webLookups"> Look things up on kid-safe science sites</label>
+
+    <label for="dinoName">The dino's name</label>
+    <input id="dinoName" type="text" autocomplete="off" placeholder="No name yet">
+
+    <label for="notes">What the dino remembers (one per line)</label>
+    <textarea id="notes"></textarea>
+
+    <label for="model">Claude model</label>
+    <input id="model" type="text" autocomplete="off">
+
+    <div class="row">
+      <button class="big slim" type="submit">Save</button>
+      <span class="saved" id="savedMsg" hidden>Saved</span>
+    </div>
+
+    <h2>Recent chats</h2>
+    <div class="log" id="log"></div>
+    <button class="ghost danger" id="eraseAll" type="button">Erase chats and memory on this device</button>
+  </form>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
