@@ -54,6 +54,14 @@ let memory = { dinoName: null, notes: [], ...read("dinoMemory", {}) };
 let log = read("dinoLog", []);
 
 function saveSettings() { write("dinoSettings", settings); }
+
+// Things that went wrong, shown under Grown-ups so they're easy to screenshot.
+const problems = [];
+function problem(text) {
+  problems.push(`${new Date().toLocaleTimeString()}: ${text}`);
+  if (problems.length > 15) problems.shift();
+  console.warn(text);
+}
 function saveMemory() { write("dinoMemory", memory); }
 function addLog(child, dino, flags) {
   const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
@@ -299,14 +307,14 @@ function startVoice() {
     const m = e.data;
     if (m.type === "progress") pill.textContent = `Voice ${m.pct}%`;
     if (m.type === "ready") { tts.ready = true; pill.hidden = true; }
-    if (m.type === "failed") { tts.failed = true; pill.textContent = "Basic voice"; console.warn("Kokoro failed:", m.message); }
+    if (m.type === "failed") { tts.failed = true; pill.textContent = "Device voice"; problem(`The dino voice couldn't load: ${m.message}`); }
     if (m.type === "audio") {
       const resolve = tts.pending.get(m.id);
       tts.pending.delete(m.id);
       if (resolve) resolve(m.error ? null : m);
     }
   };
-  tts.worker.onerror = () => { tts.failed = true; pill.textContent = "Basic voice"; };
+  tts.worker.onerror = (e) => { tts.failed = true; pill.textContent = "Device voice"; problem(`The dino voice couldn't start: ${e.message || "unknown error"}`); };
   tts.worker.postMessage({ type: "load" });
 }
 
@@ -331,14 +339,30 @@ function playSamples(samples, rate) {
   });
 }
 
-function browserVoice(text) {
+// Macs and iPhones ship joke voices (Zarvox, Bubbles, and friends); never pick those.
+const NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|fred|kathy|deranged|hysterical|pipe organ|grandma|grandpa|rocko|shelley|flo|eddy|reed|sandy)\b/i;
+
+function deviceVoices() {
+  if (!("speechSynthesis" in window)) return [];
+  return speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith("en") && !NOVELTY.test(v.name));
+}
+
+function bestDeviceVoice() {
+  const voices = deviceVoices();
+  const score = (v) => (/premium|enhanced|neural|natural|siri/i.test(v.name) ? 4 : 0)
+    + (/^(samantha|alex|ava|evan|nathan|zoe|tom|allison|susan)\b/i.test(v.name) ? 3 : 0)
+    + (/google us english/i.test(v.name) ? 3 : 0)
+    + (v.lang === "en-US" ? 1 : 0);
+  return voices.sort((a, b) => score(b) - score(a))[0] || null;
+}
+
+function browserVoice(text, name) {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window)) return resolve();
     const u = new SpeechSynthesisUtterance(text);
-    const voices = speechSynthesis.getVoices();
-    const v = voices.find((x) => x.lang === "en-US" && x.localService) || voices.find((x) => x.lang?.startsWith("en"));
+    const v = (name && deviceVoices().find((x) => x.name === name)) || bestDeviceVoice();
     if (v) u.voice = v;
-    u.rate = 0.95; u.pitch = 1.1;
+    u.rate = 1;
     u.onend = u.onerror = resolve;
     speechSynthesis.speak(u);
   });
@@ -348,17 +372,21 @@ async function speak(text) {
   const token = ++speakToken;
   dinoImg.classList.add("talking");
   try {
-    if (tts.ready && audio) {
+    const deviceChoice = settings.voice.startsWith("sys:") ? settings.voice.slice(4) : null;
+    if (!deviceChoice && tts.ready && audio) {
       // Make every sentence at once; play each as soon as it's ready, in order.
       const sentences = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [text];
-      const clips = sentences.map((s) => synth(s));
-      for (const clip of clips) {
-        const out = await clip;
+      const clips = sentences.map((s) => Promise.race([synth(s), new Promise((r) => setTimeout(() => r(null), 25000))]));
+      for (let i = 0; i < clips.length; i++) {
+        const out = await clips[i];
         if (token !== speakToken) return;
-        if (out) await playSamples(out.samples, out.rate);
+        if (out) { await playSamples(out.samples, out.rate); continue; }
+        problem("The dino voice took too long, so the device voice finished the sentence.");
+        await browserVoice(sentences.slice(i).join(" "));
+        break;
       }
     } else {
-      await browserVoice(text);
+      await browserVoice(text, deviceChoice);
     }
   } finally {
     if (token === speakToken) dinoImg.classList.remove("talking");
@@ -482,6 +510,7 @@ function startListening() {
   }
   hush();
   let heard = "";
+  let micError = null;
   const live = bubble("kid-msg live", "...");
   rec = new Recognition();
   rec.lang = "en-US";
@@ -492,17 +521,26 @@ function startListening() {
     live.textContent = heard || "...";
     chat.scrollTop = chat.scrollHeight;
   };
-  rec.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      setHint("The microphone is blocked. A grown-up can allow it in the browser settings.");
-    }
-  };
+  rec.onerror = (e) => { micError = e.error || "unknown"; };
   rec.onend = () => {
     rec = null;
     micBtn.classList.remove("on");
     dinoImg.classList.remove("listening");
     const text = heard.trim();
-    if (!text) { live.remove(); setHint("Tap the button and talk!"); return; }
+    if (!text) {
+      live.remove();
+      if (micError === "not-allowed" || micError === "service-not-allowed") {
+        setHint("The microphone is blocked. A grown-up can check Grown-ups for help.");
+        problem(`Microphone blocked (${micError}). Allow the microphone for this page. On iPhone, also turn on Settings > General > Keyboard > Enable Dictation.`);
+      } else if (micError === "network") {
+        setHint("I can't reach my ears right now. Try again!");
+        problem("Speech recognition needs the internet and couldn't reach it (network).");
+      } else {
+        setHint("I didn't hear anything. Tap and try again!");
+        problem(`The microphone heard nothing${micError ? ` (${micError})` : ""}.`);
+      }
+      return;
+    }
     live.classList.remove("live");
     live.textContent = text;
     handle(text);
@@ -510,7 +548,11 @@ function startListening() {
   micBtn.classList.add("on");
   dinoImg.classList.add("listening");
   setHint("I'm listening...");
-  try { rec.start(); } catch { rec = null; micBtn.classList.remove("on"); live.remove(); }
+  try { rec.start(); } catch (err) {
+    rec = null; micBtn.classList.remove("on"); dinoImg.classList.remove("listening"); live.remove();
+    problem(`The microphone couldn't start: ${err.message || err}`);
+    setHint("Tap the button and talk!");
+  }
 }
 
 function stopListening() { try { rec?.stop(); } catch {} }
@@ -562,7 +604,7 @@ async function handle(text) {
       const line = !local && Anthropic && err instanceof Anthropic.AuthenticationError
         ? "My thinking key isn't working. A grown-up can check it under Grown-ups."
         : "Whoa, a big wave splashed my brain! Can you say that again?";
-      console.warn(err);
+      problem(`Thinking failed: ${err.message || err}`);
       bubble("dino-msg", line);
       await speak(line);
       return;
@@ -651,7 +693,7 @@ async function start() {
   history.push({ role: "user", content: `(${child} opens the app.)` }, { role: "assistant", content: greeting });
   if (local?.ok) {
     post("/api/session", { system: `${systemPrompt()}\n\nYou opened this chat by saying: "${greeting}"`, webLookups: settings.webLookups })
-      .catch((err) => console.warn("Couldn't start Claude Code:", err));
+      .catch((err) => problem(`Couldn't start Claude Code: ${err.message || err}`));
   }
   bubble("dino-msg", greeting);
   micBtn.disabled = true;
@@ -670,7 +712,22 @@ function openSettings() {
   $("family").value = settings.family.join("\n");
   $("favorites").value = settings.favorites.join("\n");
   $("avoid").value = settings.avoid.join("\n");
-  $("voice").innerHTML = VOICES.map(([id, label]) => `<option value="${id}" ${id === settings.voice ? "selected" : ""}>${label}</option>`).join("");
+  const opt = (id, label) => {
+    const o = document.createElement("option");
+    o.value = id; o.textContent = label; o.selected = id === settings.voice;
+    return o;
+  };
+  const dinoGroup = document.createElement("optgroup");
+  dinoGroup.label = "Dino voices (free download)";
+  VOICES.forEach(([id, label]) => dinoGroup.append(opt(id, label)));
+  const deviceGroup = document.createElement("optgroup");
+  deviceGroup.label = "Voices built into this device";
+  deviceVoices().forEach((v) => deviceGroup.append(opt(`sys:${v.name}`, v.name)));
+  $("voice").replaceChildren(dinoGroup, ...(deviceGroup.children.length ? [deviceGroup] : []));
+  $("voiceStatus").textContent = tts.ready ? "The dino voices are ready."
+    : tts.failed ? "The dino voices couldn't load on this device, so the dino uses a voice built into this device. Pick one below."
+    : "The dino voices are still downloading. Until then, the dino uses a voice built into this device.";
+  $("problems").textContent = problems.length ? problems.slice().reverse().join("\n") : "Nothing has gone wrong.";
   $("surpriseRoars").checked = settings.surpriseRoars;
   $("webLookups").checked = settings.webLookups;
   $("dinoName").value = memory.dinoName || "";

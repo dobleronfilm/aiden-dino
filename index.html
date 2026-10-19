@@ -88,6 +88,7 @@
     <textarea id="avoid"></textarea>
 
     <label for="voice">The dino's voice</label>
+    <p class="help" id="voiceStatus"></p>
     <div class="row">
       <select id="voice"></select>
       <button class="ghost" id="tryVoice" type="button">Try it</button>
@@ -109,6 +110,9 @@
       <button class="big slim" type="submit">Save</button>
       <span class="saved" id="savedMsg" hidden>Saved</span>
     </div>
+
+    <h2>What went wrong</h2>
+    <pre class="problems" id="problems"></pre>
 
     <h2>Recent chats</h2>
     <div class="log" id="log"></div>

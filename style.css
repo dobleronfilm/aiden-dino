@@ -126,3 +126,4 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .dino.talking, .dino.roaring, .dots span, .overlay.alert, .mic.on { animation: none; }
 }
 #keyBox { display: flex; flex-direction: column; gap: 8px; }
+.problems { margin: 0; white-space: pre-wrap; font: .85rem/1.4 ui-monospace, Menlo, monospace; background: #f3f6fa; border-radius: 12px; padding: 10px; max-height: 30vh; overflow-y: auto; }
