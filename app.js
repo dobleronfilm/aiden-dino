@@ -26,6 +26,7 @@ const DEFAULTS = {
   speed: 1.15,
   pauseSeconds: 3,
   surpriseRoars: true,
+  grownupAlert: false,
   webLookups: true,
   model: "claude-haiku-5-5",
 };
@@ -75,7 +76,6 @@ function addLog(child, dino, flags) {
 // ---------- quick checks on what Aiden said ----------
 
 const GOODBYE_RE = /\b(bed ?time|time (?:for|to go to) bed|dinner ?time|time for dinner|lunch ?time|time for lunch|nap ?time|bath ?time|time to go|time to stop)\b/i;
-const ALERT_RE = /\b(it hurts|that hurts|i(?:'m| am)? (?:got )?hurt|my \w+ hurts|bleeding|blood|i(?:'m| am) sick|i feel sick|throw(?:ing)? up|threw up|choking|can'?t breathe|i(?:'m| am) lost|got lost|i(?:'m| am) (?:scared|afraid)(?! of)|stranger|on fire|there'?s a fire|smoke|emergency|help me)\b/i;
 const NAME_RE = /\b(?:your (?:new )?name is|your name should be|you(?:'re| are) (?:called|named)|i(?:'ll| will)? call you|i name you|let'?s call you)\s+([a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)?)/i;
 const ROAR_RE = /\b(roar|roars|roaring|rawr|growl)\b/i;
 const TAG_RE = /\[(GROWNUP|ROAR|NAME:\s*([^\]]+))\]/gi;
@@ -146,7 +146,9 @@ SAFETY RULES (these always win)
 - Never keep secrets. If he asks you to, say "Grown-ups can always hear what we talk about."
 - If he says a grown-up is sad, angry, or arguing, say feelings are okay and suggest telling someone he loves. Never take sides or ask about it.
 - Never pretend to be a doctor, a parent, or a real animal.
-- If he seems hurt, sick, scared, lost, or in danger, or mentions a stranger or a fire, start your reply with [GROWNUP] and say "Let's go find Daddy right now."
+${settings.grownupAlert
+    ? `- Only if he clearly means something is happening to him right now (he is really hurt, sick, scared, lost, or in danger, or a stranger or fire is really there), start your reply with [GROWNUP] and say "Let's go find Daddy right now." Words like these inside a story, a joke, pretend play, or a dino fact are not an emergency.`
+    : `- If he clearly means he is really hurt, sick, or scared right now, kindly suggest he go tell Daddy. Words like these inside a story, a joke, or pretend play are not a problem; just play along.`}
 - Point him to Daddy and his family for hugs, help, and real friendship.`;
   if (settings.webLookups) {
     prompt += `
@@ -649,15 +651,6 @@ async function handle(text) {
     const goodbye = GOODBYE_RE.exec(text);
     if (goodbye) return await sayGoodbye(goodbye[1], text);
 
-    if (ALERT_RE.test(text)) {
-      bubble("dino-msg", GROWNUP_LINE);
-      history.push({ role: "user", content: text }, { role: "assistant", content: GROWNUP_LINE });
-      addLog(text, GROWNUP_LINE, ["grown-up alert"]);
-      startAlert();
-      await say(GROWNUP_LINE);
-      return;
-    }
-
     const spokenName = NAME_RE.exec(text);
     if (spokenName) {
       const n = cleanName(spokenName[1]);
@@ -693,7 +686,7 @@ async function handle(text) {
     let alert = false, wantsRoar = false, taggedName = null;
     let reply = raw.replace(TAG_RE, (_, tag, name) => {
       const t = tag.toUpperCase();
-      if (t === "GROWNUP") alert = true;
+      if (t === "GROWNUP") alert = settings.grownupAlert;
       else if (t === "ROAR") wantsRoar = true;
       else if (name) taggedName = cleanName(name);
       return "";
@@ -821,6 +814,7 @@ function openSettings() {
   $("speed").value = String(settings.speed);
   $("pauseSeconds").value = String(settings.pauseSeconds);
   $("surpriseRoars").checked = settings.surpriseRoars;
+  $("grownupAlert").checked = settings.grownupAlert;
   $("webLookups").checked = settings.webLookups;
   $("dinoName").value = memory.dinoName || "";
   $("notes").value = memory.notes.join("\n");
@@ -853,6 +847,7 @@ $("settingsForm").addEventListener("submit", (e) => {
     speed: Number($("speed").value) || 1.15,
     pauseSeconds: Number($("pauseSeconds").value) || 3,
     surpriseRoars: $("surpriseRoars").checked,
+    grownupAlert: $("grownupAlert").checked,
     webLookups: $("webLookups").checked,
     model: $("model").value.trim() || DEFAULTS.model,
   };
