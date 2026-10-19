@@ -24,6 +24,7 @@ const DEFAULTS = {
   avoid: ["the dark"],
   voice: "am_michael",
   speed: 1.15,
+  pauseSeconds: 3,
   surpriseRoars: true,
   webLookups: true,
   model: "claude-haiku-5-5",
@@ -110,7 +111,8 @@ YOUR NAME
 ${nameLine} ${child} can rename you anytime. Whenever ${child} gives you a name, start your reply with [NAME: TheName], then react with delight.
 
 HOW YOU TALK
-- You are an excited park guide on a prehistoric expedition, like a guide at Jurassic Park, and ${child} leads the expedition. Sometimes call him "Captain ${child}" or "explorer."
+- You are an excited park guide on a prehistoric expedition, like a guide at Jurassic Park, and ${child} leads the expedition.
+- Talk to him the way a warm grown-up friend would. Never call him "explorer," "Captain," or any other nickname. Use his name rarely, at most once every few replies, and never to open a reply.
 - Say 2 to 4 short sentences, about 25 to 40 words in total.
 - Start by echoing his idea with excitement. Share one real, true fact. Use at most one big word per reply and explain it right away, like "Apex predator means top hunter!" End with one easy question he can answer in a word or two.
 - Phrases you like: "Expedition time!", "Dino Fact!", "Ahoy!", and "Welcome to the park!"
@@ -559,14 +561,24 @@ function startListening() {
   rec = new Recognition();
   rec.lang = "en-US";
   rec.interimResults = true;
-  rec.continuous = false;
+  // Keep listening through pauses: a 4-year-old needs time to think mid-sentence.
+  rec.continuous = true;
+  const me = rec;
+  let quietTimer = null;
+  const waitForQuiet = (ms) => {
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(() => { if (rec === me) stopListening(); }, ms);
+  };
+  waitForQuiet(12000); // time to start talking
   rec.onresult = (e) => {
-    heard = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+    heard = Array.from(e.results).map((r) => r[0].transcript).join(" ").replace(/\s+/g, " ");
     live.textContent = heard || "...";
     chat.scrollTop = chat.scrollHeight;
+    waitForQuiet(settings.pauseSeconds * 1000); // answer only after he's been quiet this long
   };
   rec.onerror = (e) => { micError = e.error || "unknown"; };
   rec.onend = () => {
+    clearTimeout(quietTimer);
     rec = null;
     micBtn.classList.remove("on");
     dinoImg.classList.remove("listening");
@@ -591,7 +603,7 @@ function startListening() {
   };
   micBtn.classList.add("on");
   dinoImg.classList.add("listening");
-  setHint("I'm listening...");
+  setHint("I'm listening... (tap when done)");
   try { rec.start(); } catch (err) {
     rec = null; micBtn.classList.remove("on"); dinoImg.classList.remove("listening"); live.remove();
     problem(`The microphone couldn't start: ${err.message || err}`);
@@ -735,7 +747,7 @@ async function sayGoodbye(word, said) {
   const label = /bed/i.test(word) ? "Bedtime" : /dinner/i.test(word) ? "Dinner time" : /lunch/i.test(word) ? "Lunch time"
     : /nap/i.test(word) ? "Nap time" : /bath/i.test(word) ? "Bath time" : "Time to go";
   const child = settings.childName || "Aiden";
-  const line = `${label} for explorers! Swim you later, Captain ${child}!`;
+  const line = `${label}! Swim you later, ${child}!`;
   playing = false;
   stopListening();
   bubble("dino-msg", line);
@@ -765,8 +777,8 @@ async function start() {
   playing = true;
   const child = settings.childName || "Aiden";
   const greeting = memory.dinoName
-    ? `Ahoy, Captain ${child}! It's me, ${memory.dinoName}! What should we explore today?`
-    : `Ahoy, explorer! I'm a mosasaurus, a giant sea reptile, and I don't have a name yet. What should you call me, ${child}?`;
+    ? `Ahoy, ${child}! It's me, ${memory.dinoName}! What should we explore today?`
+    : `Ahoy, ${child}! I'm a mosasaurus, a giant sea reptile, and I don't have a name yet. What should you call me?`;
   // The conversation has to open with a user turn, so the greeting follows a stand-in.
   history.push({ role: "user", content: `(${child} opens the app.)` }, { role: "assistant", content: greeting });
   if (local?.ok) {
@@ -807,6 +819,7 @@ function openSettings() {
   $("version").textContent = `Dino version: ${local?.version || "web"}`;
   $("problems").textContent = problems.length ? problems.slice().reverse().join("\n") : "Nothing has gone wrong.";
   $("speed").value = String(settings.speed);
+  $("pauseSeconds").value = String(settings.pauseSeconds);
   $("surpriseRoars").checked = settings.surpriseRoars;
   $("webLookups").checked = settings.webLookups;
   $("dinoName").value = memory.dinoName || "";
@@ -838,6 +851,7 @@ $("settingsForm").addEventListener("submit", (e) => {
     avoid: lineList($("avoid").value),
     voice: $("voice").value,
     speed: Number($("speed").value) || 1.15,
+    pauseSeconds: Number($("pauseSeconds").value) || 3,
     surpriseRoars: $("surpriseRoars").checked,
     webLookups: $("webLookups").checked,
     model: $("model").value.trim() || DEFAULTS.model,
@@ -869,7 +883,7 @@ $("tryVoice").onclick = async () => {
   settings.voice = choice;
   settings.speed = Number($("speed").value) || 1.15;
   try {
-    await speak("Ahoy, Captain! Dino Fact: mosasaurs were giant sea reptiles!");
+    await speak("Ahoy! Dino Fact: mosasaurs were giant sea reptiles!");
     if (note.textContent.startsWith("Playing")) note.textContent = `Played ${label}. Didn't hear it? Check that the Mac's sound is up.`;
   } catch (err) {
     note.textContent = `Couldn't play ${label}: ${err.message || err}`;
