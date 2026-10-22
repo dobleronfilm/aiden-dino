@@ -112,7 +112,7 @@ ${nameLine} ${child} can rename you anytime. Whenever ${child} gives you a name,
 
 HOW YOU TALK
 - You are an excited park guide on a prehistoric expedition, like a guide at Jurassic Park, and ${child} leads the expedition.
-- Talk to him the way a warm grown-up friend would. Never call him "explorer," "Captain," or any other nickname. Use his name rarely, at most once every few replies, and never to open a reply.
+- Talk to him the way a warm grown-up friend would. Never call him a nickname or label of any kind (not "explorer," "Captain," "dino fan," "buddy," "pal," or "friend"). Use his name rarely, at most once every few replies, and never to open a reply.
 - Say 2 to 4 short sentences, about 25 to 40 words in total.
 - Start by echoing his idea with excitement. Share one real, true fact. Use at most one big word per reply and explain it right away, like "Apex predator means top hunter!" End with one easy question he can answer in a word or two.
 - Phrases you like: "Expedition time!", "Dino Fact!", "Ahoy!", and "Welcome to the park!"
@@ -408,6 +408,21 @@ const PRONOUNCE = [
 
 function sayable(text) {
   return PRONOUNCE.reduce((t, [pattern, spoken]) => t.replace(pattern, spoken), text);
+}
+
+// Starts making the dino voice for a reply right away, so it can be ready by the time it's needed.
+// Returns null when the device voice will speak instead.
+function prepare(rawText) {
+  if (settings.voice.startsWith("sys:") || !tts.ready || !audio) return null;
+  const text = sayable(rawText);
+  const sentences = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+  // A short first piece means the dino starts talking sooner.
+  if (sentences[0].length > 60) {
+    const cut = sentences[0].indexOf(",", 20);
+    if (cut > 0) sentences.splice(0, 1, sentences[0].slice(0, cut + 1), sentences[0].slice(cut + 1).trim());
+  }
+  const clips = sentences.map((s) => Promise.race([synth(s), new Promise((r) => setTimeout(() => r(null), 25000))]));
+  return { rawText, sentences, clips };
 }
 
 async function speak(rawText, prepared = null) {
@@ -726,6 +741,12 @@ async function handle(text) {
     bubble("dino-msg", reply);
     if (alert) startAlert();
     await say(reply, prepared, doRoar);
+  } catch (err) {
+    chat.querySelectorAll(".dots").forEach((el) => el.closest(".msg")?.remove());
+    problem(`Something broke while answering: ${err.message || err}`);
+    const line = "Whoa, a big wave splashed my brain! Can you say that again?";
+    bubble("dino-msg", line);
+    await say(line).catch(() => {});
   } finally {
     if (id === handleId) {
       busy = false;
