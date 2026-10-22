@@ -387,28 +387,27 @@ function browserVoice(text, name) {
   });
 }
 
-// Voices mangle "mosasaurus", so they read a phonetic spelling. The chat bubble keeps the real word.
-function sayable(text) {
-  return text
-    .replace(/\bmosasauruses\b/gi, "moza-soruses")
-    .replace(/\bmosasaurus\b/gi, "moza-sorus")
-    .replace(/\bmosasaurs\b/gi, "moza-sores")
-    .replace(/\bmosasaur\b/gi, "moza-sore");
-}
+// Voices mangle some dinosaur words, so they read a phonetic spelling instead. The chat bubble keeps
+// the real word. Each spelling was checked against the voice's own pronunciation.
+const PRONOUNCE = [
+  [/\bmosasauruses\b/gi, "moza-soruses"],
+  [/\bmosasaurus\b/gi, "moza-sorus"],
+  [/\bmosasaurs\b/gi, "moza-sores"],
+  [/\bmosasaur\b/gi, "moza-sore"],
+  [/\bdinos\b/gi, "dynos"],                 // "DIE-nos", not "DEE-nos"
+  [/\bdino\b/gi, "dyno"],
+  [/\bspinosaurus\b/gi, "Spyno-sorus"],
+  [/\btyrannosaurus\b/gi, "Tie-ranno-sorus"],
+  [/\bplesiosaurs\b/gi, "Plee-zee-oh-sores"],
+  [/\bplesiosaur\b/gi, "Plee-zee-oh-sore"],
+  [/\bichthyosaurs\b/gi, "Ikthee-oh-sores"],
+  [/\bichthyosaur\b/gi, "Ikthee-oh-sore"],
+  [/\bliopleurodon\b/gi, "Lie-oh-ploor-oh-don"],
+  [/\barchelon\b/gi, "Ar-keh-lon"],
+];
 
-// Starts making the dino voice for a reply right away, so it can be ready by the time it's needed.
-// Returns null when the device voice will speak instead.
-function prepare(rawText) {
-  if (settings.voice.startsWith("sys:") || !tts.ready || !audio) return null;
-  const text = sayable(rawText);
-  const sentences = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [text];
-  // A short first piece means the dino starts talking sooner.
-  if (sentences[0].length > 60) {
-    const cut = sentences[0].indexOf(",", 20);
-    if (cut > 0) sentences.splice(0, 1, sentences[0].slice(0, cut + 1), sentences[0].slice(cut + 1).trim());
-  }
-  const clips = sentences.map((s) => Promise.race([synth(s), new Promise((r) => setTimeout(() => r(null), 25000))]));
-  return { rawText, sentences, clips };
+function sayable(text) {
+  return PRONOUNCE.reduce((t, [pattern, spoken]) => t.replace(pattern, spoken), text);
 }
 
 async function speak(rawText, prepared = null) {
